@@ -1,0 +1,11 @@
+streamlit
+fastapi
+uvicorn
+pandas
+numpy
+pydantic
+requests
+langchain
+langchain-core
+langgraph
+langchain-ollama
