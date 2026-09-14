@@ -1,10 +1,10 @@
 import streamlit as st
-import requests
+import pandas as pd
 
-from agent import ask_agent
+from analyzer import analyze_metrics
 
 
-API_BASE_URL = "http://127.0.0.1:8000"
+DATA_PATH = "data/network_metrics.csv"
 
 
 st.set_page_config(
@@ -18,167 +18,156 @@ st.title("📡 AI Network Operations Assistant")
 
 st.write(
     """
-    Agentic AI assistant for monitoring and analyzing
-    simulated telecom network nodes using LangChain,
-    Qwen2.5, FastAPI, Pandas and NumPy.
+    Telecom network monitoring dashboard for simulated network nodes,
+    using Python, Pandas, NumPy and automated severity analysis.
     """
 )
 
 
-# --------------------------------
-# Load network nodes
-# --------------------------------
-
-def get_nodes():
-
-    response = requests.get(
-        f"{API_BASE_URL}/network/nodes",
-        timeout=10
-    )
-
-    response.raise_for_status()
-
-    return response.json()
+@st.cache_data
+def load_network_data():
+    return pd.read_csv(DATA_PATH)
 
 
-def get_node_analysis(node_id):
-
-    response = requests.get(
-        f"{API_BASE_URL}/network/analyze/{node_id}",
-        timeout=10
-    )
-
-    response.raise_for_status()
-
-    return response.json()
+df = load_network_data()
 
 
-# --------------------------------
-# Network dashboard
-# --------------------------------
+node_ids = df["node_id"].tolist()
 
-try:
-
-    nodes = get_nodes()
-
-    node_ids = [
-        node["node_id"]
-        for node in nodes
-    ]
-
-    selected_node = st.selectbox(
-        "Select Network Node",
-        node_ids
-    )
-
-    analysis = get_node_analysis(
-        selected_node
-    )
-
-    metrics = analysis["metrics"]
-
-    st.subheader(
-        f"📊 Network Metrics — {selected_node}"
-    )
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.metric(
-            "Latency",
-            f"{metrics['latency_ms']} ms"
-        )
-
-    with col2:
-        st.metric(
-            "Packet Loss",
-            f"{metrics['packet_loss']}%"
-        )
-
-    with col3:
-        st.metric(
-            "CPU Usage",
-            f"{metrics['cpu_usage']}%"
-        )
+selected_node = st.selectbox(
+    "Select Network Node",
+    node_ids
+)
 
 
-    st.write(
-        f"**Location:** {analysis['location']}"
+node = df[
+    df["node_id"] == selected_node
+].iloc[0]
+
+
+st.subheader(
+    f"📊 Network Metrics — {selected_node}"
+)
+
+
+col1, col2, col3 = st.columns(3)
+
+
+with col1:
+    st.metric(
+        "Latency",
+        f"{node['latency_ms']} ms"
     )
 
 
-    # --------------------------------
-    # Severity information
-    # --------------------------------
-
-    st.subheader(
-        "🚨 Automated Analysis"
-    )
-
-    st.json(
-        analysis["analysis"]
+with col2:
+    st.metric(
+        "Packet Loss",
+        f"{node['packet_loss']}%"
     )
 
 
-    st.divider()
-
-
-    # --------------------------------
-    # AI Agent
-    # --------------------------------
-
-    st.subheader(
-        "🤖 Ask the AI Network Agent"
+with col3:
+    st.metric(
+        "CPU Usage",
+        f"{node['cpu_usage']}%"
     )
 
-    default_question = (
-        f"Analyze network node {selected_node} "
-        "and explain if there is a problem."
-    )
 
-    question = st.text_area(
-        "Question",
-        value=default_question
-    )
-
-    if st.button(
-        "Run AI Analysis",
-        type="primary"
-    ):
-
-        with st.spinner(
-            "Agent is analyzing the network..."
-        ):
-
-            try:
-
-                answer = ask_agent(
-                    question
-                )
-
-                st.success(
-                    "Analysis complete"
-                )
-
-                st.markdown(
-                    answer
-                )
-
-            except Exception as error:
-
-                st.error(
-                    f"Agent error: {error}"
-                )
+st.write(
+    f"**Location:** {node['location']}"
+)
 
 
-except requests.RequestException:
+analysis = analyze_metrics(
+    latency_ms=node["latency_ms"],
+    packet_loss=node["packet_loss"],
+    cpu_usage=node["cpu_usage"]
+)
+
+
+st.subheader(
+    "🚨 Automated Network Analysis"
+)
+
+
+severity = str(
+    analysis.get("severity", "unknown")
+)
+
+score = analysis.get(
+    "total_score",
+    analysis.get("score", "N/A")
+)
+
+
+if severity.lower() == "critical":
 
     st.error(
-        """
-        Network API is not running.
+        f"🔴 CRITICAL — Risk Score: {score}"
+    )
 
-        Start it in another terminal with:
+elif severity.lower() in [
+    "warning",
+    "moderate"
+]:
 
-        uvicorn network_api:app --reload
-        """
+    st.warning(
+        f"🟠 {severity.upper()} — Risk Score: {score}"
+    )
+
+else:
+
+    st.success(
+        f"🟢 {severity.upper()} — Risk Score: {score}"
+    )
+
+
+st.json(
+    analysis
+)
+
+
+st.subheader(
+    "🤖 Network Assessment"
+)
+
+
+if severity.lower() == "critical":
+
+    st.markdown(
+        f"""
+Node **{selected_node}** in **{node['location']}**
+is experiencing significant network degradation.
+
+- **Latency:** {node['latency_ms']} ms
+- **Packet Loss:** {node['packet_loss']}%
+- **CPU Usage:** {node['cpu_usage']}%
+
+The combined severity score indicates that
+immediate investigation is recommended.
+"""
+    )
+
+elif severity.lower() in [
+    "warning",
+    "moderate"
+]:
+
+    st.markdown(
+        f"""
+Node **{selected_node}** shows signs of degraded
+network performance.
+
+Further monitoring and investigation may be required.
+"""
+    )
+
+else:
+
+    st.markdown(
+        f"""
+Node **{selected_node}** is currently operating
+within acceptable network conditions.
+"""
     )
